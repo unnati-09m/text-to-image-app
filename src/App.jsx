@@ -3,7 +3,8 @@ import { Sparkles, Download, RefreshCw, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const API_KEY = import.meta.env.VITE_HF_API_KEY;
-const MODEL_ID = "black-forest-labs/FLUX.1-schnell";
+const PRIMARY_MODEL = "black-forest-labs/FLUX.1-schnell";
+const FALLBACK_MODEL = "stabilityai/stable-diffusion-2-1";
 
 function App() {
   const [prompt, setPrompt] = useState("");
@@ -11,36 +12,54 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const queryModel = async (modelId, promptText) => {
+    const response = await fetch(
+      `https://router.huggingface.co/hf-inference/models/${modelId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+        body: JSON.stringify({ 
+          inputs: promptText,
+          options: { wait_for_model: true }
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || `API Error: ${response.status} ${response.statusText}`);
+    }
+
+    return await response.blob();
+  };
+
   const generateImage = async (e) => {
     e.preventDefault();
     if (!prompt) return;
+    if (!API_KEY || API_KEY === "undefined") {
+      setError("Hugging Face API Key is missing. Please add VITE_HF_API_KEY to your .env file or Vercel settings.");
+      return;
+    }
 
     setLoading(true);
     setError(null);
 
     try {
-      const response = await fetch(
-        `https://router.huggingface.co/hf-inference/models/${MODEL_ID}`,
-        {
-          headers: {
-            Authorization: `Bearer ${API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          method: "POST",
-          body: JSON.stringify({ 
-            inputs: prompt,
-            options: { wait_for_model: true }
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to generate image. Please try again.");
+      // Attempt 1: Primary Model
+      try {
+        const blob = await queryModel(PRIMARY_MODEL, prompt);
+        const imageUrl = URL.createObjectURL(blob);
+        setImage(imageUrl);
+      } catch (primaryErr) {
+        console.warn("Primary model failed, trying fallback...", primaryErr);
+        // Attempt 2: Fallback Model
+        const blob = await queryModel(FALLBACK_MODEL, prompt);
+        const imageUrl = URL.createObjectURL(blob);
+        setImage(imageUrl);
       }
-
-      const blob = await response.blob();
-      const imageUrl = URL.createObjectURL(blob);
-      setImage(imageUrl);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -166,7 +185,7 @@ function App() {
       </main>
 
       <footer className="footer">
-        <p>© 2026 LuminaAI • Powered by FLUX.1-schnell</p>
+        <p>© 2026 LuminaAI • Powered by FLUX & Stable Diffusion</p>
       </footer>
     </div>
   );
