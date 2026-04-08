@@ -166,7 +166,7 @@ function App() {
       </main>
 
       <footer className="footer">
-        <p>© 2026 LuminaAI • Powered by Stable Diffusion XL</p>
+        <p>© 2026 LuminaAI • Powered by FLUX.1-schnell</p>
       </footer>
     </div>
   );
